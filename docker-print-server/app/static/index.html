@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Налаштування Docker Print Server</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Docker Print Server</h1>
+            <p class="subtitle">Налаштування локального сервера друку ZPL-етикеток</p>
+        </header>
+
+        <div class="status-bar" id="statusBar" style="display: none;">
+            <span id="statusMessage"></span>
+        </div>
+
+        <main>
+            <!-- Вкладки -->
+            <div class="tabs">
+                <button class="tab-button active" onclick="switchTab('settings')" id="tab-settings">Налаштування DuckDNS</button>
+                <button class="tab-button" onclick="switchTab('printers')" id="tab-printers">Принтери</button>
+            </div>
+
+            <!-- Вкладка налаштувань -->
+            <div id="tab-content-settings" class="tab-content active">
+                <section class="card">
+                    <h2>Налаштування DuckDNS</h2>
+                    <form id="duckdnsForm">
+                        <div class="form-group">
+                            <label for="duckdnsToken">API Token (DuckDNS)</label>
+                            <input type="text" id="duckdnsToken" name="duckdnsToken" placeholder="your-duckdns-api-token" required>
+                            <small>Отримайте API token на <a href="https://www.duckdns.org/" target="_blank">duckdns.org</a></small>
+                        </div>
+                        <div class="form-group">
+                            <label for="duckdnsDomain">Доменне ім'я</label>
+                            <input type="text" id="duckdnsDomain" name="duckdnsDomain" placeholder="myprinter.duckdns.org" required>
+                            <small>Ваш домен в DuckDNS (без http:// або https://)</small>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="card">
+                    <h2>Налаштування SSL (Let'sEncrypt)</h2>
+                    <form id="sslForm">
+                        <div class="form-group">
+                            <label for="certbotEmail">Email адреса</label>
+                            <input type="email" id="certbotEmail" name="certbotEmail" placeholder="admin@example.com" required>
+                            <small>Email для отримання повідомлень від Let'sEncrypt</small>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="autoRenewCerts" name="autoRenewCerts" checked>
+                                Автоматично оновлювати SSL сертифікати
+                            </label>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="card">
+                    <h2>Статус сервісу</h2>
+                    <div class="status-info">
+                        <div class="status-item">
+                            <span class="status-label">Статус:</span>
+                            <span class="status-value" id="serviceStatus">Перевірка...</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">SSL сертифікат:</span>
+                            <span class="status-value" id="sslStatus">Перевірка...</span>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="actions">
+                    <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveConfig()">Зберегти налаштування</button>
+                    <button type="button" class="btn btn-secondary" id="renewCertBtn" onclick="renewCertificate()">Перевипустити сертифікат</button>
+                </div>
+            </div>
+
+            <!-- Вкладка принтерів -->
+            <div id="tab-content-printers" class="tab-content">
+                <section class="card">
+                    <h2>Сканування принтерів</h2>
+                    <p>Сканування локальної мережі на пошук пристроїв з відкритим портом</p>
+                    <form id="scanForm">
+                        <div class="form-group">
+                            <label for="networkCidr">Мережа (CIDR)</label>
+                            <input type="text" id="networkCidr" name="networkCidr" placeholder="192.168.1.0/24" pattern="^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$">
+                            <small>Залиште порожнім для автоматичного визначення локальної мережі (наприклад: 192.168.1.0/24)</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="scanPort">Порт</label>
+                            <input type="number" id="scanPort" name="scanPort" value="9100" min="1" max="65535" required>
+                            <small>Порт для сканування (за замовчуванням: 9100)</small>
+                        </div>
+                        <div class="form-group">
+                            <button type="button" class="btn btn-primary" id="scanBtn" onclick="scanPrinters()">Сканувати мережу</button>
+                            <span id="scanStatus" class="scan-status"></span>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="card">
+                    <h2>Знайдені принтери</h2>
+                    <div id="printersList" class="printers-list">
+                        <p class="empty-message">Натисніть "Сканувати мережу" для пошуку принтерів</p>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer>
+            <p>Docker Print Server v1.0.0</p>
+        </footer>
+    </div>
+
+    <script src="/static/settings.js"></script>
+</body>
+</html>
+

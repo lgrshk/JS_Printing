@@ -1,0 +1,50 @@
+services:
+  app:
+    build: .
+    container_name: docker-print-server-app
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    volumes:
+      - ./config:/app/config:rw
+      - ./certbot/certs:/app/certbot/certs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Доступ до Docker socket для виконання docker exec
+    environment:
+      - CONFIG_PATH=/app/config/config.json
+      - FLASK_ENV=production
+      - APP_PORT=443
+      - SSL_CERT_PATH=/app/certbot/certs/live/roshkahome.duckdns.org/fullchain.pem
+      - SSL_KEY_PATH=/app/certbot/certs/live/roshkahome.duckdns.org/privkey.pem
+    networks:
+      - print-network
+
+  certbot:
+    build:
+      context: ./certbot
+      dockerfile: Dockerfile
+    container_name: docker-print-server-certbot
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    environment:
+      - DNS_SERVERS=8.8.8.8,8.8.4.4
+    volumes:
+      - ./config:/app/config:ro
+      - ./certbot/certs:/etc/letsencrypt:rw
+      - ./certbot/logs:/var/log/letsencrypt:rw
+      - ./certbot/duckdns.ini:/etc/letsencrypt/duckdns.ini:ro
+      - ./certbot-renew.sh:/certbot-renew.sh:ro
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do /certbot-renew.sh; sleep 12h & wait $${!}; done;'"
+    networks:
+      - print-network
+    # Команда для отримання сертифікату через DNS challenge (виконується один раз):
+    # docker-compose exec certbot certbot certonly --authenticator dns-duckdns --dns-duckdns-credentials /etc/letsencrypt/duckdns.ini -d roshkahome.duckdns.org --email oleg.roshka@gmail.com --agree-tos --non-interactive --dns-duckdns-propagation-seconds 180
+
+networks:
+  print-network:
+    driver: bridge
+
+volumes:
+  certbot_certs:
+  certbot_logs:

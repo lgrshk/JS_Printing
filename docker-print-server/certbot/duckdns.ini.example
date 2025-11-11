@@ -1,0 +1,5 @@
+# DuckDNS API credentials для Certbot DNS challenge
+# Цей файл використовується плагіном certbot-dns-duckdns
+# Скопіюйте цей файл та вставте ваш DuckDNS API token
+dns_duckdns_token = your-duckdns-api-token-here
+
