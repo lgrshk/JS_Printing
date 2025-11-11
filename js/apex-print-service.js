@@ -10,6 +10,211 @@
     'use strict';
 
     /**
+     * Парсить ZPL код для визначення розмірів етикетки
+     * 
+     * @param {string} zpl - ZPL код для аналізу
+     * @returns {Object} Об'єкт з розмірами {width, height, dpmm} в дюймах
+     */
+    function parseZPLDimensions(zpl) {
+        var defaultDpmm = 8;
+        var defaultWidth = 4; // дюйми
+        var defaultHeight = 6; // дюйми
+        
+        if (!zpl || typeof zpl !== 'string') {
+            return {
+                width: defaultWidth,
+                height: defaultHeight,
+                dpmm: defaultDpmm
+            };
+        }
+        
+        var width = null;
+        var height = null;
+        var dpmm = defaultDpmm;
+        
+        // Шукаємо ^PW (Print Width) - ширина етикетки в точках
+        var pwMatch = zpl.match(/\^PW(\d+)/i);
+        if (pwMatch && pwMatch[1]) {
+            var widthPoints = parseInt(pwMatch[1], 10);
+            if (!isNaN(widthPoints) && widthPoints > 0) {
+                // Конвертуємо точки в дюйми: точки / dpmm / 25.4, округлюємо вгору
+                width = Math.ceil(widthPoints / dpmm / 25.4);
+            }
+        }
+        
+        // Шукаємо ^LL (Label Length) - довжина етикетки в точках
+        var llMatch = zpl.match(/\^LL(\d+)/i);
+        if (llMatch && llMatch[1]) {
+            var heightPoints = parseInt(llMatch[1], 10);
+            if (!isNaN(heightPoints) && heightPoints > 0) {
+                // Конвертуємо точки в дюйми: точки / dpmm / 25.4, округлюємо вгору
+                height = Math.ceil(heightPoints / dpmm / 25.4);
+            }
+        }
+        
+        // Якщо розміри не знайдено, аналізуємо координати елементів як fallback
+        if (width === null || height === null) {
+            var maxX = 0;
+            var maxY = 0;
+            
+            // Шукаємо координати в командах ^FO (Field Origin) та ^FT (Field Typeset)
+            var coordMatches = zpl.match(/\^(?:FO|FT)(\d+),(\d+)/gi);
+            if (coordMatches) {
+                for (var i = 0; i < coordMatches.length; i++) {
+                    var coordMatch = coordMatches[i].match(/(\d+),(\d+)/);
+                    if (coordMatch) {
+                        var x = parseInt(coordMatch[1], 10);
+                        var y = parseInt(coordMatch[2], 10);
+                        if (!isNaN(x) && x > maxX) maxX = x;
+                        if (!isNaN(y) && y > maxY) maxY = y;
+                    }
+                }
+                
+                // Додаємо відступи для тексту/елементів (приблизно 200 точок)
+                if (maxX > 0) {
+                    maxX += 200;
+                    if (width === null) {
+                        width = Math.ceil(maxX / dpmm / 25.4);
+                    }
+                }
+                if (maxY > 0) {
+                    maxY += 200;
+                    if (height === null) {
+                        height = Math.ceil(maxY / dpmm / 25.4);
+                    }
+                }
+            }
+        }
+        
+        // Використовуємо дефолтні значення якщо не знайдено
+        if (width === null || width < 1) {
+            width = defaultWidth;
+        }
+        if (height === null || height < 1) {
+            height = defaultHeight;
+        }
+        
+        return {
+            width: width,
+            height: height,
+            dpmm: dpmm
+        };
+    }
+
+    /**
+     * Генерує PDF з ZPL коду через Labelary API
+     * 
+     * @param {string} zpl - ZPL код для конвертації
+     * @param {Function} [onSuccess] - Callback при успішній генерації PDF
+     * @param {Function} [onError] - Callback при помилці
+     * @returns {Promise} Promise з PDF blob
+     */
+    function generatePDFFromZPL(zpl, onSuccess, onError) {
+        return new Promise(function(resolve, reject) {
+            if (!zpl || typeof zpl !== 'string' || zpl.trim() === '') {
+                var error = new Error('ZPL код не вказаний або порожній');
+                if (typeof onError === 'function') {
+                    onError(error);
+                }
+                reject(error);
+                return;
+            }
+            
+            // Визначаємо розміри етикетки
+            var dimensions = parseZPLDimensions(zpl);
+            var dpmm = dimensions.dpmm;
+            var width = dimensions.width;
+            var height = dimensions.height;
+            
+            // Формуємо URL для Labelary API (використовуємо HTTPS для сумісності з HTTPS сторінками)
+            var labelaryUrl = 'https://api.labelary.com/v1/printers/' + dpmm + 'dpmm/labels/' + width + 'x' + height + '/0/';
+            
+            // Відправляємо POST запит
+            fetch(labelaryUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/pdf',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: zpl
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    var error = new Error('Помилка Labelary API: HTTP ' + response.status + ' ' + response.statusText);
+                    error.status = response.status;
+                    error.statusText = response.statusText;
+                    
+                    // Спробувати отримати деталі помилки
+                    return response.text().then(function(text) {
+                        try {
+                            error.details = JSON.parse(text);
+                        } catch (e) {
+                            error.details = text;
+                        }
+                        throw error;
+                    });
+                }
+                
+                // Отримуємо PDF як blob
+                return response.blob();
+            })
+            .then(function(pdfBlob) {
+                // Створюємо blob URL
+                var pdfUrl = URL.createObjectURL(pdfBlob);
+                
+                // Відкриваємо PDF в новій вкладці
+                var pdfWindow = window.open(pdfUrl, '_blank');
+                
+                if (!pdfWindow) {
+                    // Якщо popup заблоковано, спробуємо інший спосіб
+                    var error = new Error('Не вдалося відкрити PDF. Можливо, popup заблоковано браузером.');
+                    if (typeof onError === 'function') {
+                        onError(error);
+                    }
+                    reject(error);
+                    return;
+                }
+                
+                // Результат успішної генерації
+                var result = {
+                    success: true,
+                    pdfUrl: pdfUrl,
+                    pdfBlob: pdfBlob,
+                    dimensions: dimensions,
+                    message: 'PDF успішно згенеровано та відкрито'
+                };
+                
+                if (typeof onSuccess === 'function') {
+                    onSuccess(result);
+                }
+                resolve(result);
+            })
+            .catch(function(error) {
+                var errorMessage = 'Помилка при генерації PDF';
+                
+                if (error instanceof TypeError && error.message.includes('fetch')) {
+                    errorMessage = 'Помилка мережевого з\'єднання з Labelary API. Перевірте підключення до інтернету.';
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+                
+                var pdfError = {
+                    message: errorMessage,
+                    originalError: error,
+                    status: error.status,
+                    statusText: error.statusText,
+                    details: error.details
+                };
+                
+                if (typeof onError === 'function') {
+                    onError(pdfError);
+                }
+                reject(pdfError);
+            });
+        });
+    }
+
+    /**
      * Відправляє ZPL-команди на принтер через проміжний веб-сервер
      * 
      * @param {Object} options - Параметри для відправки на друк
@@ -62,6 +267,18 @@
                 }
                 reject(error);
                 return;
+            }
+
+            // Перевірка чи це PDF режим
+            if (ip.toUpperCase().trim() === 'PDF') {
+                // Генеруємо PDF через Labelary API
+                return generatePDFFromZPL(zpl, onSuccess, onError)
+                    .then(function(result) {
+                        resolve(result);
+                    })
+                    .catch(function(error) {
+                        reject(error);
+                    });
             }
 
             if (!port || typeof port !== 'number' || port < 1 || port > 65535) {
@@ -266,6 +483,52 @@
             var totalPools = Math.ceil(totalLabels / poolSize);
             var results = [];
             var errors = [];
+
+            // Перевірка чи перша етикетка має IP="PDF"
+            var firstLabel = labels[0];
+            var firstIp = (firstLabel.IP || firstLabel.ip || '').toString().toUpperCase().trim();
+            if (firstIp === 'PDF') {
+                // Обробляємо тільки першу етикетку для PDF
+                var firstZpl = firstLabel.ZPL || firstLabel.zpl;
+                if (!firstZpl) {
+                    var error = new Error('Перша етикетка: ZPL команди не вказані');
+                    if (typeof onError === 'function') {
+                        onError(error);
+                    }
+                    reject(error);
+                    return;
+                }
+                
+                generatePDFFromZPL(firstZpl, function(result) {
+                    var summary = {
+                        total: totalLabels,
+                        success: 1,
+                        errors: 0,
+                        results: [{ index: 0, success: true, response: result }],
+                        errors: [],
+                        message: 'Оброблено тільки перша етикетка (PDF режим). Інші етикетки ігноровано.'
+                    };
+                    
+                    if (typeof onSuccess === 'function') {
+                        onSuccess(summary);
+                    }
+                    resolve(summary);
+                }, function(error) {
+                    var summary = {
+                        total: totalLabels,
+                        success: 0,
+                        errors: 1,
+                        results: [{ index: 0, success: false, error: error }],
+                        errors: [{ index: 0, success: false, error: error }]
+                    };
+                    
+                    if (typeof onError === 'function') {
+                        onError(error);
+                    }
+                    reject(error);
+                });
+                return;
+            }
 
             // Функція для відправки однієї етикетки
             function sendSingleLabel(label, index) {
@@ -554,6 +817,44 @@
                     onError(error);
                 }
                 reject(error);
+                return;
+            }
+
+            // Перевірка чи перша етикетка має IP="PDF" - якщо так, обробляємо тільки її
+            var firstLabel = labels[0];
+            var firstIp = (firstLabel.IP || firstLabel.ip || '').toString().toUpperCase().trim();
+            if (firstIp === 'PDF') {
+                // Обробляємо тільки першу етикетку для PDF
+                var firstZpl = firstLabel.ZPL || firstLabel.zpl;
+                if (!firstZpl) {
+                    var error = new Error('Перша етикетка: ZPL команди не вказані');
+                    if (typeof onError === 'function') {
+                        onError(error);
+                    }
+                    reject(error);
+                    return;
+                }
+                
+                // Генеруємо PDF тільки для першої етикетки
+                generatePDFFromZPL(firstZpl, function(result) {
+                    var summary = {
+                        total: labels.length,
+                        success: 1,
+                        errors: 0,
+                        response: result,
+                        message: 'Оброблено тільки перша етикетка (PDF режим). Інші етикетки ігноровано.'
+                    };
+                    
+                    if (typeof onSuccess === 'function') {
+                        onSuccess(summary);
+                    }
+                    resolve(summary);
+                }, function(error) {
+                    if (typeof onError === 'function') {
+                        onError(error);
+                    }
+                    reject(error);
+                });
                 return;
             }
 
