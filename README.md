@@ -319,6 +319,27 @@ sendLabelsInBatches({
 
 Детальні приклади інтеграції з Oracle APEX дивіться в файлі [examples/apex-usage-example.md](examples/apex-usage-example.md).
 
+## Розгортання Print Server
+
+Для роботи системи потрібен проміжний веб-сервер (Print Server), який приймає запити з браузера та відправляє їх на принтер.
+
+### Варіанти розгортання:
+
+1. **Docker розгортання** (рекомендовано для більшості користувачів)
+   - Покрокова інструкція: [docker-print-server/README.md](docker-print-server/README.md)
+   - Простіше встановлення та налаштування
+   - Повна ізоляція та переносимість
+
+2. **Нативне Linux розгортання** (для досвідчених адміністраторів)
+   - Покрокова інструкція: [docs/linux-native-deployment.md](docs/linux-native-deployment.md)
+   - Пряме встановлення на Linux сервер без Docker
+   - Краща продуктивність та контроль
+
+### Додаткова документація:
+
+- [Порівняння архітектур](docs/printing-architecture-comparison.md) - порівняння JS_Printing з архітектурою через Oracle сервер
+- [Інструкція імпорту в Google Docs](docs/IMPORT_TO_GOOGLE_DOCS.md) - як імпортувати документацію в Google Docs
+
 ## Вимоги
 
 - Oracle APEX 18.1 або новіша версія
